@@ -34,20 +34,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (nombre: string, pin: string) => {
-    const { data, error } = await supabase
-      .from('sub_padrinos')
-      .select('*')
-      .ilike('nombre', nombre.trim())
-      .eq('pin', pin.trim())
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('sub_padrinos')
+        .select('*')
+        .ilike('nombre', nombre.trim())
+        .eq('pin', pin.trim())
+        .single();
 
-    if (error || !data) {
-      return { success: false, error: 'Nombre o PIN incorrecto' };
+      if (error || !data) {
+        return { success: false, error: 'Nombre o PIN incorrecto' };
+      }
+
+      setUsuario(data);
+      localStorage.setItem('el_extra_usuario', JSON.stringify(data));
+      return { success: true };
+    } catch (err) {
+      console.error('Login error:', err);
+      return { success: false, error: 'Error de conexión. Intenta de nuevo.' };
     }
-
-    setUsuario(data);
-    localStorage.setItem('el_extra_usuario', JSON.stringify(data));
-    return { success: true };
   };
 
   const logout = () => {

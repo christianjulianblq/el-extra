@@ -17,14 +17,19 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    const result = await login(nombre, pin);
+    try {
+      const result = await login(nombre, pin);
 
-    if (result.success) {
-      router.push('/');
-    } else {
-      setError(result.error || 'Error al iniciar sesión');
+      if (result.success) {
+        router.push('/');
+      } else {
+        setError(result.error || 'Error al iniciar sesión');
+      }
+    } catch {
+      setError('Error de conexión. Intenta de nuevo.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
