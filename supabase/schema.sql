@@ -6,7 +6,7 @@
 CREATE TABLE sub_padrinos (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   nombre TEXT NOT NULL UNIQUE,
-  pin TEXT NOT NULL DEFAULT 'SEDECO1',
+  pin TEXT NOT NULL DEFAULT '1234',
   es_admin BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
