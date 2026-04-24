@@ -1,6 +1,6 @@
 {
-  "name": "El Extra - Control de Visitas",
-  "short_name": "El Extra",
+  "name": "SEDECO - Control de Visitas",
+  "short_name": "SEDECO",
   "description": "Sistema de control de visitas en tiempo real",
   "start_url": "/",
   "display": "standalone",

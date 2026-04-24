@@ -37,16 +37,16 @@ export default function LoginPage() {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8">
         <div className="text-center mb-8">
           <div className="w-20 h-20 bg-blue-700 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-3xl text-white font-bold">E</span>
+            <span className="text-3xl text-white font-bold">S</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-800">El Extra</h1>
+          <h1 className="text-2xl font-bold text-gray-800">SEDECO</h1>
           <p className="text-gray-500 text-sm mt-1">Control de Visitas</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nombre de Sub Padrino
+              Usuario
             </label>
             <input
               type="text"
@@ -61,7 +61,7 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              PIN
+              Contraseña
             </label>
             <input
               type="password"

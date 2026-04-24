@@ -4,13 +4,13 @@ import { AuthProvider } from '@/lib/auth-context';
 import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar';
 
 export const metadata: Metadata = {
-  title: 'El Extra - Control de Visitas',
-  description: 'Sistema de control de visitas en tiempo real para la jornada El Extra',
+  title: 'SEDECO - Control de Visitas',
+  description: 'Sistema de control de visitas en tiempo real',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'El Extra',
+    title: 'SEDECO',
   },
 };
 
