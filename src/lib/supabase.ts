@@ -39,6 +39,7 @@ export interface Visita {
   curp: string | null;
   telefono: string | null;
   foto_url: string | null;
+  notas: string | null;
   fecha_hora: string;
 }
 

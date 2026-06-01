@@ -12,6 +12,7 @@ interface VisitaConDetalles {
   curp: string | null;
   telefono: string | null;
   foto_url: string | null;
+  notas: string | null;
   fecha_hora: string;
   beneficiarios: { nombre: string; direccion: string | null } | null;
   sub_padrinos: { nombre: string } | null;
@@ -217,6 +218,7 @@ export default function AdminPage() {
                       <h3 className="font-semibold text-gray-800 truncate">{v.nombre_completo}</h3>
                       {v.curp && <p className="text-xs text-gray-400 mt-0.5">CURP: {v.curp}</p>}
                       <p className="text-sm text-blue-600 mt-1">{v.sub_padrinos?.nombre}</p>
+                      {v.notas && <p className="text-sm text-gray-600 mt-1">{v.notas}</p>}
                       <p className="text-xs text-gray-400 mt-1">
                         {new Date(v.fecha_hora).toLocaleString('es-MX', {
                           dateStyle: 'medium',

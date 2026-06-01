@@ -24,6 +24,7 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
   const [nombreCompleto, setNombreCompleto] = useState('');
   const [curp, setCurp] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [notas, setNotas] = useState('');
   const [foto, setFoto] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
 
@@ -131,6 +132,7 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
         p_curp: curp || null,
         p_telefono: telefono || null,
         p_foto_url: fotoUrl,
+        p_notas: notas || null,
       });
 
       if (rpcError) {
@@ -318,6 +320,19 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
               onChange={(e) => setTelefono(e.target.value)}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="10 dígitos"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Notas
+            </label>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              rows={3}
+              placeholder="Observaciones o notas de la visita"
             />
           </div>
 

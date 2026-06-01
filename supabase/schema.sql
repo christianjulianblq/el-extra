@@ -41,6 +41,7 @@ CREATE TABLE visitas (
   curp TEXT,
   telefono TEXT,
   foto_url TEXT,
+  notas TEXT,
   fecha_hora TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   -- Garantizar que solo haya UNA visita por beneficiario (control de duplicados)
@@ -113,7 +114,8 @@ CREATE OR REPLACE FUNCTION registrar_visita(
   p_nombre_completo TEXT,
   p_curp TEXT,
   p_telefono TEXT,
-  p_foto_url TEXT
+  p_foto_url TEXT,
+  p_notas TEXT DEFAULT NULL
 )
 RETURNS JSON
 LANGUAGE plpgsql
@@ -136,8 +138,8 @@ BEGIN
   END IF;
 
   -- Insertar la visita
-  INSERT INTO visitas (beneficiario_id, sub_padrino_id, nombre_completo, curp, telefono, foto_url)
-  VALUES (p_beneficiario_id, p_sub_padrino_id, p_nombre_completo, p_curp, p_telefono, p_foto_url)
+  INSERT INTO visitas (beneficiario_id, sub_padrino_id, nombre_completo, curp, telefono, foto_url, notas)
+  VALUES (p_beneficiario_id, p_sub_padrino_id, p_nombre_completo, p_curp, p_telefono, p_foto_url, p_notas)
   RETURNING * INTO v_visita;
 
   -- Marcar como visitado
