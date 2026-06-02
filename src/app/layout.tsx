@@ -31,6 +31,23 @@ export default function RootLayout({
     <html lang="es">
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Emergency SW cleanup: if an old SW cached sw.js itself,
+              // it can never update. This inline script runs before React
+              // and forces a re-register if the SW is stale.
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistration().then(function(reg) {
+                  if (reg && reg.active) {
+                    // Force update check bypassing SW cache
+                    reg.update().catch(function() {});
+                  }
+                }).catch(function() {});
+              }
+            `,
+          }}
+        />
       </head>
       <body className="min-h-screen bg-gray-50 antialiased">
         <AuthProvider>{children}</AuthProvider>
