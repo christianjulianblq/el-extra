@@ -23,6 +23,19 @@ export default function HomePage() {
   const [jornadaMeta, setJornadaMeta] = useState<JornadaMeta | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadMsg, setDownloadMsg] = useState('');
+  const [isOnline, setIsOnline] = useState(true);
+
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (!loading && !usuario) {
@@ -126,7 +139,7 @@ export default function HomePage() {
   }
 
   const handleDescargarJornada = async () => {
-    if (!usuario || !navigator.onLine) return;
+    if (!usuario || !isOnline) return;
     setDownloading(true);
     setDownloadMsg('');
     try {
@@ -246,7 +259,7 @@ export default function HomePage() {
       <div className="mx-4 mb-3 bg-white rounded-xl p-4 shadow-sm">
         <button
           onClick={handleDescargarJornada}
-          disabled={downloading || !navigator.onLine}
+          disabled={downloading || !isOnline}
           className="w-full flex items-center justify-center gap-2 bg-blue-700 text-white py-3 rounded-xl font-medium text-sm hover:bg-blue-800 active:bg-blue-900 transition disabled:opacity-50"
         >
           {downloading ? (
@@ -312,7 +325,7 @@ export default function HomePage() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-10">
             <p className="text-gray-400 text-lg">
-              {!navigator.onLine && beneficiarios.length === 0
+              {!isOnline && beneficiarios.length === 0
                 ? 'No hay beneficiarios descargados para uso sin conexión.'
                 : 'No hay beneficiarios'}
             </p>
