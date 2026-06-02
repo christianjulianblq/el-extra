@@ -38,6 +38,8 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
   }, [usuario, authLoading, router]);
 
   useEffect(() => {
+    if (!usuario) return; // Wait for auth before fetching
+
     const fetchBeneficiario = async () => {
       // Try online first
       if (navigator.onLine) {
@@ -61,13 +63,11 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
       }
 
       // Offline or fetch failed — use cache
-      if (usuario) {
-        const cached = obtenerBeneficiarioPorId(id, usuario.id);
-        if (cached) {
-          setBeneficiario(cached);
-          setNombreCompleto(cached.nombre);
-          setTelefono(cached.telefono || '');
-        }
+      const cached = obtenerBeneficiarioPorId(id, usuario.id);
+      if (cached) {
+        setBeneficiario(cached);
+        setNombreCompleto(cached.nombre);
+        setTelefono(cached.telefono || '');
       }
       setLoading(false);
     };
