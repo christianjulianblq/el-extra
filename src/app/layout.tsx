@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/lib/auth-context';
 import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar';
+import OfflineBanner from '@/components/OfflineBanner';
 
 export const metadata: Metadata = {
   title: 'SEDECO - Control de Visitas',
@@ -33,6 +34,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-gray-50 antialiased">
         <AuthProvider>{children}</AuthProvider>
+        <OfflineBanner />
         <ServiceWorkerRegistrar />
       </body>
     </html>

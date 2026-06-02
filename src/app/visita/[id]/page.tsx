@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase, Beneficiario } from '@/lib/supabase';
+import { guardarPendienteOffline } from '@/lib/offline-storage';
 import dynamic from 'next/dynamic';
 
 const MapView = dynamic(() => import('@/components/MapView'), { ssr: false });
@@ -19,6 +20,7 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [savedOffline, setSavedOffline] = useState(false);
 
   // Form fields
   const [nombreCompleto, setNombreCompleto] = useState('');
@@ -96,12 +98,48 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
     });
   };
 
+  const guardarOffline = async () => {
+    // Convert photo to base64 for local storage
+    let fotoBase64: string | null = null;
+    if (foto) {
+      const compressed = await compressImage(foto);
+      fotoBase64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(compressed);
+      });
+    }
+
+    guardarPendienteOffline({
+      beneficiario_id: id,
+      sub_padrino_id: usuario!.id,
+      nombre_completo: nombreCompleto,
+      curp: curp || null,
+      telefono: telefono || null,
+      foto_base64: fotoBase64,
+      notas: notas || null,
+    });
+
+    // Notify OfflineBanner to update count
+    window.dispatchEvent(new Event('offline-visit-saved'));
+
+    setSavedOffline(true);
+    setTimeout(() => router.push('/'), 2500);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!usuario || !beneficiario) return;
 
     setError('');
     setSaving(true);
+
+    // If clearly offline, save locally immediately
+    if (!navigator.onLine) {
+      await guardarOffline();
+      setSaving(false);
+      return;
+    }
 
     try {
       // Upload photo if exists
@@ -148,7 +186,21 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
       setSuccess(true);
       setTimeout(() => router.push('/'), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error desconocido');
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+      // If it looks like a network error, save offline
+      const isNetworkError =
+        !navigator.onLine ||
+        msg.includes('Failed to fetch') ||
+        msg.includes('NetworkError') ||
+        msg.includes('network') ||
+        msg.includes('ECONNREFUSED') ||
+        msg.includes('ERR_INTERNET_DISCONNECTED');
+
+      if (isNetworkError) {
+        await guardarOffline();
+      } else {
+        setError(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -192,6 +244,23 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
           >
             Volver
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (savedOffline) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center bg-white rounded-2xl p-8 shadow-lg max-w-sm">
+          <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-gray-800">Guardado sin conexión</h2>
+          <p className="text-gray-500 mt-2">Se subirá automáticamente cuando vuelva el internet.</p>
+          <p className="text-gray-400 mt-1 text-sm">Redirigiendo...</p>
         </div>
       </div>
     );
