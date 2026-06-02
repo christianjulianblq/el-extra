@@ -1,8 +1,10 @@
-const CACHE_NAME = 'el-extra-v3';
+const CACHE_NAME = 'el-extra-v4';
 const OFFLINE_URL = '/offline.html';
 
-// Only cache the app shell and offline fallback
+// Precache the app shell so offline navigation always works
 const PRECACHE_FILES = [
+  '/',
+  '/login',
   '/offline.html',
   '/manifest.json',
   '/icon-192.png',
