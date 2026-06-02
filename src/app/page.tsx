@@ -331,7 +331,16 @@ export default function HomePage() {
           filtered.map((ben) => (
             <div
               key={ben.id}
-              onClick={() => !ben.visitado && router.push(`/visita/${ben.id}`)}
+              onClick={() => {
+                if (ben.visitado) return;
+                const url = `/visita/${ben.id}`;
+                if (navigator.onLine) {
+                  router.push(url);
+                } else {
+                  // Offline: use hard navigation so the SW serves the cached app shell
+                  window.location.href = url;
+                }
+              }}
               className={`bg-white rounded-xl p-4 shadow-sm border-l-4 transition active:scale-[0.98] ${
                 ben.visitado
                   ? 'border-green-500 opacity-70'

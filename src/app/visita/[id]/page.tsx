@@ -147,7 +147,10 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
     window.dispatchEvent(new Event('offline-visit-saved'));
 
     setSavedOffline(true);
-    setTimeout(() => router.push('/'), 2500);
+    setTimeout(() => {
+      if (navigator.onLine) router.push('/');
+      else window.location.href = '/';
+    }, 2500);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -210,7 +213,10 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
       marcarVisitadoEnCache(id);
 
       setSuccess(true);
-      setTimeout(() => router.push('/'), 2000);
+      setTimeout(() => {
+        if (navigator.onLine) router.push('/');
+        else window.location.href = '/';
+      }, 2000);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       // If it looks like a network error, save offline
