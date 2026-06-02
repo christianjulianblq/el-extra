@@ -1,10 +1,8 @@
-const CACHE_NAME = 'el-extra-v2';
+const CACHE_NAME = 'el-extra-v3';
 const OFFLINE_URL = '/offline.html';
 
-// Files to cache for offline
+// Only cache the app shell and offline fallback
 const PRECACHE_FILES = [
-  '/',
-  '/login',
   '/offline.html',
   '/manifest.json',
   '/icon-192.png',
@@ -14,16 +12,14 @@ const PRECACHE_FILES = [
 // Install: precache essential files
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_FILES).catch(() => {
-        // Some files might not exist yet, that's OK
-      });
-    })
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(PRECACHE_FILES).catch(() => {})
+    )
   );
   self.skipWaiting();
 });
 
-// Activate: clean old caches
+// Activate: clean ALL old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -35,16 +31,16 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch: network-first with cache fallback
+// Fetch: only handle navigation requests.
+// Let _next/static, APIs, images, etc. go through normally —
+// Vercel already sets correct cache headers for those.
 self.addEventListener('fetch', (event) => {
-  // Skip non-GET and Supabase API requests
-  if (event.request.method !== 'GET') return;
-  if (event.request.url.includes('supabase')) return;
+  if (event.request.mode !== 'navigate') return;
 
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Cache successful responses
+        // Cache successful navigation responses as app shell
         if (response.status === 200) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -54,20 +50,24 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(async () => {
-        // Try cache
+        // Offline: try serving the cached version of this exact URL
         const cached = await caches.match(event.request);
         if (cached) return cached;
 
-        // For navigation, serve the cached app shell so React can
-        // boot and use localStorage data (jornada cache, offline visits).
-        // Only fall back to offline.html if the app shell is not cached.
-        if (event.request.mode === 'navigate') {
-          const appShell = await caches.match('/');
-          if (appShell) return appShell;
-
-          const offlinePage = await caches.match(OFFLINE_URL);
-          if (offlinePage) return offlinePage;
+        // Try serving any cached navigation page (app shell)
+        // so React can boot and use localStorage data
+        const allCached = await caches.open(CACHE_NAME);
+        const keys = await allCached.keys();
+        for (const key of keys) {
+          const resp = await allCached.match(key);
+          if (resp && resp.headers.get('content-type')?.includes('text/html')) {
+            return resp;
+          }
         }
+
+        // Last resort: static offline page
+        const offlinePage = await caches.match(OFFLINE_URL);
+        if (offlinePage) return offlinePage;
 
         return new Response('Offline', { status: 503 });
       })
