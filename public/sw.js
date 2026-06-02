@@ -1,4 +1,4 @@
-const CACHE_NAME = 'el-extra-v1';
+const CACHE_NAME = 'el-extra-v2';
 const OFFLINE_URL = '/offline.html';
 
 // Files to cache for offline
@@ -58,8 +58,13 @@ self.addEventListener('fetch', (event) => {
         const cached = await caches.match(event.request);
         if (cached) return cached;
 
-        // For navigation, show offline page
+        // For navigation, serve the cached app shell so React can
+        // boot and use localStorage data (jornada cache, offline visits).
+        // Only fall back to offline.html if the app shell is not cached.
         if (event.request.mode === 'navigate') {
+          const appShell = await caches.match('/');
+          if (appShell) return appShell;
+
           const offlinePage = await caches.match(OFFLINE_URL);
           if (offlinePage) return offlinePage;
         }
