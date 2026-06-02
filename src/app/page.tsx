@@ -130,6 +130,26 @@ export default function HomePage() {
     };
   }, [usuario, fetchFromSupabase]);
 
+  // Listen for offline-visit-saved to update cache
+  useEffect(() => {
+    const handler = () => {
+      const raw = localStorage.getItem('visitas_pendientes');
+      if (raw) {
+        try {
+          const pendientes = JSON.parse(raw);
+          pendientes.forEach((p: { beneficiario_id: string }) => {
+            marcarVisitadoEnCache(p.beneficiario_id);
+          });
+          if (usuario) {
+            setBeneficiarios(obtenerBeneficiariosCache(usuario.id));
+          }
+        } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('offline-visit-saved', handler);
+    return () => window.removeEventListener('offline-visit-saved', handler);
+  }, [usuario]);
+
   if (loading || !usuario) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -158,29 +178,6 @@ export default function HomePage() {
       setDownloading(false);
     }
   };
-
-  // Listen for offline-visit-saved to update cache
-  useEffect(() => {
-    const handler = () => {
-      // When a visit is saved offline, update the local cache to show it as visited
-      // The beneficiario_id comes from the pending queue — we re-read from localStorage
-      // This is a simple approach: mark recently-saved beneficiarios
-      const raw = localStorage.getItem('visitas_pendientes');
-      if (raw) {
-        try {
-          const pendientes = JSON.parse(raw);
-          pendientes.forEach((p: { beneficiario_id: string }) => {
-            marcarVisitadoEnCache(p.beneficiario_id);
-          });
-          if (usuario) {
-            setBeneficiarios(obtenerBeneficiariosCache(usuario.id));
-          }
-        } catch { /* ignore */ }
-      }
-    };
-    window.addEventListener('offline-visit-saved', handler);
-    return () => window.removeEventListener('offline-visit-saved', handler);
-  }, [usuario]);
 
   const filtered = beneficiarios
     .filter((b) => {
