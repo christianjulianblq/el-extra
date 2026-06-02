@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase, Beneficiario } from '@/lib/supabase';
 import { guardarPendienteOffline } from '@/lib/offline-storage';
+import { obtenerBeneficiarioPorId, marcarVisitadoEnCache } from '@/lib/jornada-cache';
 import dynamic from 'next/dynamic';
 
 const MapView = dynamic(() => import('@/components/MapView'), { ssr: false });
@@ -38,22 +39,41 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
 
   useEffect(() => {
     const fetchBeneficiario = async () => {
-      const { data } = await supabase
-        .from('beneficiarios')
-        .select('*')
-        .eq('id', id)
-        .single();
+      // Try online first
+      if (navigator.onLine) {
+        try {
+          const { data } = await supabase
+            .from('beneficiarios')
+            .select('*')
+            .eq('id', id)
+            .single();
 
-      if (data) {
-        setBeneficiario(data);
-        setNombreCompleto(data.nombre);
-        setTelefono(data.telefono || '');
+          if (data) {
+            setBeneficiario(data);
+            setNombreCompleto(data.nombre);
+            setTelefono(data.telefono || '');
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // Network error — fall through to cache
+        }
+      }
+
+      // Offline or fetch failed — use cache
+      if (usuario) {
+        const cached = obtenerBeneficiarioPorId(id, usuario.id);
+        if (cached) {
+          setBeneficiario(cached);
+          setNombreCompleto(cached.nombre);
+          setTelefono(cached.telefono || '');
+        }
       }
       setLoading(false);
     };
 
     fetchBeneficiario();
-  }, [id]);
+  }, [id, usuario]);
 
   const handleFotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -120,6 +140,9 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
       notas: notas || null,
     });
 
+    // Mark as visited in local cache
+    marcarVisitadoEnCache(id);
+
     // Notify OfflineBanner to update count
     window.dispatchEvent(new Event('offline-visit-saved'));
 
@@ -182,6 +205,9 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
       if (!result.success) {
         throw new Error(result.error || 'No se pudo registrar la visita');
       }
+
+      // Mark as visited in local cache
+      marcarVisitadoEnCache(id);
 
       setSuccess(true);
       setTimeout(() => router.push('/'), 2000);

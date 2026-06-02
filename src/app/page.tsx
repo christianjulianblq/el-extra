@@ -1,9 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase, Beneficiario } from '@/lib/supabase';
+import {
+  guardarBeneficiariosCache,
+  obtenerBeneficiariosCache,
+  obtenerJornadaMeta,
+  marcarVisitadoEnCache,
+  JornadaMeta,
+} from '@/lib/jornada-cache';
 
 export default function HomePage() {
   const { usuario, loading, logout } = useAuth();
@@ -12,6 +19,10 @@ export default function HomePage() {
   const [loadingData, setLoadingData] = useState(true);
   const [filtro, setFiltro] = useState<'todos' | 'pendientes' | 'visitados'>('todos');
   const [busqueda, setBusqueda] = useState('');
+  const [isOfflineData, setIsOfflineData] = useState(false);
+  const [jornadaMeta, setJornadaMeta] = useState<JornadaMeta | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadMsg, setDownloadMsg] = useState('');
 
   useEffect(() => {
     if (!loading && !usuario) {
@@ -19,52 +30,92 @@ export default function HomePage() {
     }
   }, [usuario, loading, router]);
 
+  const fetchFromSupabase = useCallback(async (): Promise<Beneficiario[]> => {
+    if (usuario!.es_admin) {
+      const { data } = await supabase
+        .from('beneficiarios')
+        .select('*')
+        .order('nombre');
+      return data || [];
+    } else {
+      const { data } = await supabase
+        .from('asignaciones')
+        .select('beneficiario_id, beneficiarios(*)')
+        .eq('sub_padrino_id', usuario!.id);
+
+      return (data || [])
+        .map((a: Record<string, unknown>) => a.beneficiarios as Beneficiario)
+        .filter(Boolean)
+        .sort((a: Beneficiario, b: Beneficiario) => a.nombre.localeCompare(b.nombre));
+    }
+  }, [usuario]);
+
   useEffect(() => {
     if (!usuario) return;
 
-    const fetchBeneficiarios = async () => {
-      if (usuario.es_admin) {
-        const { data } = await supabase
-          .from('beneficiarios')
-          .select('*')
-          .order('nombre');
-        setBeneficiarios(data || []);
-      } else {
-        const { data } = await supabase
-          .from('asignaciones')
-          .select('beneficiario_id, beneficiarios(*)')
-          .eq('sub_padrino_id', usuario.id);
+    // Load meta for display
+    setJornadaMeta(obtenerJornadaMeta());
 
-        const bens = (data || [])
-          .map((a: Record<string, unknown>) => a.beneficiarios as Beneficiario)
-          .filter(Boolean)
-          .sort((a: Beneficiario, b: Beneficiario) => a.nombre.localeCompare(b.nombre));
-        setBeneficiarios(bens);
+    const loadBeneficiarios = async () => {
+      // 1. Show cached data immediately (if available)
+      const cached = obtenerBeneficiariosCache(usuario.id);
+      if (cached.length > 0) {
+        setBeneficiarios(cached);
+        setLoadingData(false);
       }
+
+      // 2. If online, fetch fresh data
+      if (navigator.onLine) {
+        try {
+          const fresh = await fetchFromSupabase();
+          setBeneficiarios(fresh);
+          guardarBeneficiariosCache(fresh, usuario.id);
+          setJornadaMeta(obtenerJornadaMeta());
+          setIsOfflineData(false);
+        } catch {
+          // Network failed — keep cache
+          if (cached.length > 0) {
+            setIsOfflineData(true);
+          }
+        }
+      } else {
+        // Offline — use cache
+        if (cached.length > 0) {
+          setIsOfflineData(true);
+        }
+      }
+
       setLoadingData(false);
     };
 
-    fetchBeneficiarios();
+    loadBeneficiarios();
 
-    const channel = supabase
-      .channel('beneficiarios-changes')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'beneficiarios' },
-        (payload) => {
-          setBeneficiarios((prev) =>
-            prev.map((b) =>
-              b.id === payload.new.id ? { ...b, ...payload.new } : b
-            )
-          );
-        }
-      )
-      .subscribe();
+    // Realtime only if online
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    if (navigator.onLine) {
+      channel = supabase
+        .channel('beneficiarios-changes')
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'beneficiarios' },
+          (payload) => {
+            setBeneficiarios((prev) => {
+              const updated = prev.map((b) =>
+                b.id === payload.new.id ? { ...b, ...payload.new } : b
+              );
+              // Also update cache
+              guardarBeneficiariosCache(updated, usuario.id);
+              return updated;
+            });
+          }
+        )
+        .subscribe();
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
-  }, [usuario]);
+  }, [usuario, fetchFromSupabase]);
 
   if (loading || !usuario) {
     return (
@@ -73,6 +124,50 @@ export default function HomePage() {
       </div>
     );
   }
+
+  const handleDescargarJornada = async () => {
+    if (!usuario || !navigator.onLine) return;
+    setDownloading(true);
+    setDownloadMsg('');
+    try {
+      const fresh = await fetchFromSupabase();
+      guardarBeneficiariosCache(fresh, usuario.id);
+      setBeneficiarios(fresh);
+      const meta = obtenerJornadaMeta();
+      setJornadaMeta(meta);
+      setIsOfflineData(false);
+      setDownloadMsg(`${fresh.length} beneficiarios descargados`);
+      setTimeout(() => setDownloadMsg(''), 4000);
+    } catch {
+      setDownloadMsg('Error al descargar. Verifica tu conexión.');
+      setTimeout(() => setDownloadMsg(''), 4000);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Listen for offline-visit-saved to update cache
+  useEffect(() => {
+    const handler = () => {
+      // When a visit is saved offline, update the local cache to show it as visited
+      // The beneficiario_id comes from the pending queue — we re-read from localStorage
+      // This is a simple approach: mark recently-saved beneficiarios
+      const raw = localStorage.getItem('visitas_pendientes');
+      if (raw) {
+        try {
+          const pendientes = JSON.parse(raw);
+          pendientes.forEach((p: { beneficiario_id: string }) => {
+            marcarVisitadoEnCache(p.beneficiario_id);
+          });
+          if (usuario) {
+            setBeneficiarios(obtenerBeneficiariosCache(usuario.id));
+          }
+        } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('offline-visit-saved', handler);
+    return () => window.removeEventListener('offline-visit-saved', handler);
+  }, [usuario]);
 
   const filtered = beneficiarios
     .filter((b) => {
@@ -137,6 +232,48 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* Offline indicator */}
+      {isOfflineData && (
+        <div className="mx-4 mb-2 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2 flex items-center gap-2">
+          <svg className="w-4 h-4 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-xs text-yellow-700">Mostrando datos guardados localmente</p>
+        </div>
+      )}
+
+      {/* Download jornada card */}
+      <div className="mx-4 mb-3 bg-white rounded-xl p-4 shadow-sm">
+        <button
+          onClick={handleDescargarJornada}
+          disabled={downloading || !navigator.onLine}
+          className="w-full flex items-center justify-center gap-2 bg-blue-700 text-white py-3 rounded-xl font-medium text-sm hover:bg-blue-800 active:bg-blue-900 transition disabled:opacity-50"
+        >
+          {downloading ? (
+            <>
+              <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+              Descargando...
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Descargar jornada para uso sin conexión
+            </>
+          )}
+        </button>
+        {downloadMsg && (
+          <p className="text-center text-sm text-green-600 mt-2 font-medium">{downloadMsg}</p>
+        )}
+        {jornadaMeta && (
+          <div className="mt-2 text-center text-xs text-gray-400 space-y-0.5">
+            <p>Beneficiarios descargados: {jornadaMeta.cantidad}</p>
+            <p>Última actualización: {new Date(jornadaMeta.fecha).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</p>
+          </div>
+        )}
+      </div>
+
       {/* Search */}
       <div className="px-4 mb-3">
         <input
@@ -174,7 +311,11 @@ export default function HomePage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-10">
-            <p className="text-gray-400 text-lg">No hay beneficiarios</p>
+            <p className="text-gray-400 text-lg">
+              {!navigator.onLine && beneficiarios.length === 0
+                ? 'No hay beneficiarios descargados para uso sin conexión.'
+                : 'No hay beneficiarios'}
+            </p>
           </div>
         ) : (
           filtered.map((ben) => (
