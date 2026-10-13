@@ -3,7 +3,6 @@ const STORAGE_KEY = 'visitas_pendientes';
 export interface VisitaPendiente {
   local_id: string;
   beneficiario_id: string;
-  sub_padrino_id: string;
   nombre_completo: string;
   curp: string | null;
   telefono: string | null;
@@ -31,8 +30,7 @@ export function guardarPendienteOffline(
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(pendientes));
   } catch {
-    // localStorage full — try removing oldest synced entries or warn
-    console.error('No se pudo guardar en localStorage');
+    throw new Error('Sin espacio para guardar sin conexión. Sincroniza las visitas pendientes o guarda sin foto.');
   }
 
   return pendiente;

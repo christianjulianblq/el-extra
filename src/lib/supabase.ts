@@ -7,12 +7,14 @@ export const supabase = supabaseUrl
   ? createClient(supabaseUrl, supabaseAnonKey)
   : (null as unknown as ReturnType<typeof createClient>);
 
-// Tipos
-export interface SubPadrino {
+export const SESSION_KEY = 'el_extra_sesion';
+
+export interface Usuario {
   id: string;
   nombre: string;
-  pin: string;
+  usuario: string;
   es_admin: boolean;
+  must_change: boolean;
 }
 
 export interface Beneficiario {
@@ -23,26 +25,27 @@ export interface Beneficiario {
   latitud: number | null;
   longitud: number | null;
   visitado: boolean;
+  departamento?: string | null;
+  subpadrino?: string | null;
 }
 
-export interface Asignacion {
-  id: string;
-  sub_padrino_id: string;
-  beneficiario_id: string;
+export function getToken(): string | null {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')?.token ?? null;
+  } catch {
+    return null;
+  }
 }
 
-export interface Visita {
-  id: string;
-  beneficiario_id: string;
-  sub_padrino_id: string;
-  nombre_completo: string;
-  curp: string | null;
-  telefono: string | null;
-  foto_url: string | null;
-  notas: string | null;
-  fecha_hora: string;
-}
-
-export interface BeneficiarioConEstado extends Beneficiario {
-  visita?: Visita | null;
+/** Llama una función RPC pasando el token de sesión. Lanza Error con el mensaje de la BD. */
+export async function rpc<T = unknown>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
+  const { data, error } = await supabase.rpc(fn, { p_token: getToken(), ...args });
+  if (error) {
+    if (error.message.includes('No autorizado') && typeof window !== 'undefined') {
+      localStorage.removeItem(SESSION_KEY);
+      window.location.href = '/login';
+    }
+    throw new Error(error.message);
+  }
+  return data as T;
 }

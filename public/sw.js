@@ -1,4 +1,4 @@
-const CACHE_NAME = 'el-extra-v4';
+const CACHE_NAME = 'el-extra-v5';
 const OFFLINE_URL = '/offline.html';
 
 // Precache the app shell so offline navigation always works

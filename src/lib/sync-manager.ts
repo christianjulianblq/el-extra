@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, rpc } from './supabase';
 import {
   obtenerPendientesOffline,
   eliminarPendienteSincronizado,
@@ -39,31 +39,19 @@ async function sincronizarUna(pendiente: VisitaPendiente): Promise<boolean> {
       fotoUrl = urlData.publicUrl;
     }
 
-    // Call RPC
-    const { data, error: rpcError } = await supabase.rpc('registrar_visita', {
+    const result = await rpc<{ success: boolean; error?: string }>('registrar_visita', {
       p_beneficiario_id: pendiente.beneficiario_id,
-      p_sub_padrino_id: pendiente.sub_padrino_id,
       p_nombre_completo: pendiente.nombre_completo,
       p_curp: pendiente.curp,
       p_telefono: pendiente.telefono,
       p_foto_url: fotoUrl,
       p_notas: pendiente.notas,
+      p_fecha: pendiente.fecha_hora,
     });
 
-    if (rpcError) {
-      // If beneficiary was already visited, remove from queue (not a retry-able error)
-      if (rpcError.message?.includes('ya fue visitado')) {
-        eliminarPendienteSincronizado(pendiente.local_id);
-        return true;
-      }
-      console.error('Error RPC sync:', rpcError.message);
-      return false;
-    }
-
-    const result = data as { success: boolean; error?: string };
     if (!result.success) {
-      // Already visited — remove from queue
-      if (result.error?.includes('ya fue visitado')) {
+      // Ya visitado / no asignado: no tiene caso reintentar, se descarta de la cola
+      if (result.error?.includes('ya fue visitado') || result.error?.includes('No tienes asignado')) {
         eliminarPendienteSincronizado(pendiente.local_id);
         return true;
       }
@@ -91,13 +79,14 @@ export async function sincronizarPendientes(): Promise<number> {
 
   syncing = true;
   let sincronizadas = 0;
-
-  for (const pendiente of pendientes) {
-    const ok = await sincronizarUna(pendiente);
-    if (ok) sincronizadas++;
-    else break; // Stop on first failure (likely still offline)
+  try {
+    for (const pendiente of pendientes) {
+      const ok = await sincronizarUna(pendiente);
+      if (ok) sincronizadas++;
+      else break; // Stop on first failure (likely still offline)
+    }
+  } finally {
+    syncing = false;
   }
-
-  syncing = false;
   return sincronizadas;
 }

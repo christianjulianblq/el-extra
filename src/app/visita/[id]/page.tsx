@@ -3,9 +3,9 @@
 import { useEffect, useState, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { supabase, Beneficiario } from '@/lib/supabase';
+import { supabase, rpc, Beneficiario } from '@/lib/supabase';
 import { guardarPendienteOffline } from '@/lib/offline-storage';
-import { obtenerBeneficiarioPorId, marcarVisitadoEnCache } from '@/lib/jornada-cache';
+import { obtenerBeneficiarioPorId, marcarVisitadoEnCache, guardarBeneficiariosCache } from '@/lib/jornada-cache';
 import dynamic from 'next/dynamic';
 
 const MapView = dynamic(() => import('@/components/MapView'), { ssr: false });
@@ -41,33 +41,20 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
     if (!usuario) return; // Wait for auth before fetching
 
     const fetchBeneficiario = async () => {
-      // Try online first
-      if (navigator.onLine) {
+      let ben = obtenerBeneficiarioPorId(id, usuario.id);
+      if (!ben && navigator.onLine) {
         try {
-          const { data } = await supabase
-            .from('beneficiarios')
-            .select('*')
-            .eq('id', id)
-            .single();
-
-          if (data) {
-            setBeneficiario(data);
-            setNombreCompleto(data.nombre);
-            setTelefono(data.telefono || '');
-            setLoading(false);
-            return;
-          }
+          const lista = await rpc<Beneficiario[]>('mis_beneficiarios');
+          guardarBeneficiariosCache(lista, usuario.id);
+          ben = lista.find((x) => x.id === id) || null;
         } catch {
-          // Network error — fall through to cache
+          // sin red: queda sin datos
         }
       }
-
-      // Offline or fetch failed — use cache
-      const cached = obtenerBeneficiarioPorId(id, usuario.id);
-      if (cached) {
-        setBeneficiario(cached);
-        setNombreCompleto(cached.nombre);
-        setTelefono(cached.telefono || '');
+      if (ben) {
+        setBeneficiario(ben);
+        setNombreCompleto(ben.nombre);
+        setTelefono(ben.telefono || '');
       }
       setLoading(false);
     };
@@ -114,6 +101,7 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
           0.7
         );
       };
+      img.onerror = () => resolve(file);
       img.src = URL.createObjectURL(file);
     });
   };
@@ -130,15 +118,19 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
       });
     }
 
-    guardarPendienteOffline({
+    try {
+      guardarPendienteOffline({
       beneficiario_id: id,
-      sub_padrino_id: usuario!.id,
       nombre_completo: nombreCompleto,
       curp: curp || null,
       telefono: telefono || null,
       foto_base64: fotoBase64,
       notas: notas || null,
-    });
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar sin conexión');
+      return;
+    }
 
     // Mark as visited in local cache
     marcarVisitadoEnCache(id);
@@ -189,19 +181,14 @@ export default function VisitaPage({ params }: { params: Promise<{ id: string }>
       }
 
       // Call the atomic function to register the visit
-      const { data, error: rpcError } = await supabase.rpc('registrar_visita', {
+      const data = await rpc('registrar_visita', {
         p_beneficiario_id: id,
-        p_sub_padrino_id: usuario.id,
         p_nombre_completo: nombreCompleto,
         p_curp: curp || null,
         p_telefono: telefono || null,
         p_foto_url: fotoUrl,
         p_notas: notas || null,
       });
-
-      if (rpcError) {
-        throw new Error(rpcError.message);
-      }
 
       const result = data as { success: boolean; error?: string };
 

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { supabase, Beneficiario } from '@/lib/supabase';
+import { rpc, Beneficiario } from '@/lib/supabase';
 import {
   guardarBeneficiariosCache,
   obtenerBeneficiariosCache,
@@ -43,91 +43,44 @@ export default function HomePage() {
     }
   }, [usuario, loading, router]);
 
-  const fetchFromSupabase = useCallback(async (): Promise<Beneficiario[]> => {
-    if (usuario!.es_admin) {
-      const { data } = await supabase
-        .from('beneficiarios')
-        .select('*')
-        .order('nombre');
-      return data || [];
-    } else {
-      const { data } = await supabase
-        .from('asignaciones')
-        .select('beneficiario_id, beneficiarios(*)')
-        .eq('sub_padrino_id', usuario!.id);
-
-      return (data || [])
-        .map((a: Record<string, unknown>) => a.beneficiarios as Beneficiario)
-        .filter(Boolean)
-        .sort((a: Beneficiario, b: Beneficiario) => a.nombre.localeCompare(b.nombre));
-    }
-  }, [usuario]);
+  const fetchFromSupabase = useCallback(
+    () => rpc<Beneficiario[]>('mis_beneficiarios'),
+    []
+  );
 
   useEffect(() => {
     if (!usuario) return;
-
-    // Load meta for display
     setJornadaMeta(obtenerJornadaMeta());
 
-    const loadBeneficiarios = async () => {
-      // 1. Show cached data immediately (if available)
-      const cached = obtenerBeneficiariosCache(usuario.id);
-      if (cached.length > 0) {
-        setBeneficiarios(cached);
-        setLoadingData(false);
+    const refrescar = async () => {
+      try {
+        const fresh = await fetchFromSupabase();
+        setBeneficiarios(fresh);
+        guardarBeneficiariosCache(fresh, usuario.id);
+        setJornadaMeta(obtenerJornadaMeta());
+        setIsOfflineData(false);
+      } catch {
+        setIsOfflineData(true); // sin red: se queda con lo guardado
       }
-
-      // 2. If online, fetch fresh data
-      if (navigator.onLine) {
-        try {
-          const fresh = await fetchFromSupabase();
-          setBeneficiarios(fresh);
-          guardarBeneficiariosCache(fresh, usuario.id);
-          setJornadaMeta(obtenerJornadaMeta());
-          setIsOfflineData(false);
-        } catch {
-          // Network failed — keep cache
-          if (cached.length > 0) {
-            setIsOfflineData(true);
-          }
-        }
-      } else {
-        // Offline — use cache
-        if (cached.length > 0) {
-          setIsOfflineData(true);
-        }
-      }
-
-      setLoadingData(false);
     };
 
-    loadBeneficiarios();
-
-    // Realtime only if online
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    if (navigator.onLine) {
-      channel = supabase
-        .channel('beneficiarios-changes')
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'beneficiarios' },
-          (payload) => {
-            setBeneficiarios((prev) => {
-              const updated = prev.map((b) =>
-                b.id === payload.new.id ? { ...b, ...payload.new } : b
-              );
-              // Also update cache
-              guardarBeneficiariosCache(updated, usuario.id);
-              return updated;
-            });
-          }
-        )
-        .subscribe();
+    const cached = obtenerBeneficiariosCache(usuario.id);
+    if (cached.length > 0) {
+      setBeneficiarios(cached);
+      setLoadingData(false);
     }
 
-    return () => {
-      if (channel) supabase.removeChannel(channel);
-    };
+    (async () => {
+      if (navigator.onLine) await refrescar();
+      else if (cached.length > 0) setIsOfflineData(true);
+      setLoadingData(false);
+    })();
+
+    // Actualiza cada 30 s mientras la app esté visible y con red
+    const timer = setInterval(() => {
+      if (navigator.onLine && document.visibilityState === 'visible') refrescar();
+    }, 30000);
+    return () => clearInterval(timer);
   }, [usuario, fetchFromSupabase]);
 
   // Listen for offline-visit-saved to update cache
@@ -191,7 +144,9 @@ export default function HomePage() {
       return (
         b.nombre.toLowerCase().includes(q) ||
         b.direccion?.toLowerCase().includes(q) ||
-        b.telefono?.includes(q)
+        b.telefono?.includes(q) ||
+        b.subpadrino?.toLowerCase().includes(q) ||
+        b.departamento?.toLowerCase().includes(q)
       );
     });
 
@@ -216,6 +171,12 @@ export default function HomePage() {
                 Admin
               </button>
             )}
+            <button
+              onClick={() => router.push('/cambiar-password')}
+              className="bg-blue-800 px-3 py-2 rounded-lg text-sm hover:bg-blue-900 transition"
+            >
+              Clave
+            </button>
             <button
               onClick={logout}
               className="bg-blue-800 px-3 py-2 rounded-lg text-sm hover:bg-blue-900 transition"
@@ -290,7 +251,7 @@ export default function HomePage() {
           type="text"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar beneficiario..."
+          placeholder={usuario.es_admin ? "Buscar por beneficiario, teléfono, dirección o sub padrino..." : "Buscar beneficiario..."}
           className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>
@@ -355,6 +316,9 @@ export default function HomePage() {
                   )}
                   {ben.telefono && (
                     <p className="text-sm text-gray-400 mt-1">{ben.telefono}</p>
+                  )}
+                  {usuario.es_admin && ben.subpadrino && (
+                    <p className="text-xs text-blue-600 mt-1">{ben.subpadrino}</p>
                   )}
                 </div>
                 <div className="ml-3 flex-shrink-0">
