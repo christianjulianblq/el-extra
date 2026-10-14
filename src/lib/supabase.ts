@@ -49,3 +49,9 @@ export async function rpc<T = unknown>(fn: string, args: Record<string, unknown>
   }
   return data as T;
 }
+
+/** Enlace de WhatsApp (wa.me). Asume México (+52) si el número trae 10 dígitos. */
+export function waLink(tel: string): string {
+  const d = tel.replace(/\D/g, '');
+  return `https://wa.me/${d.length === 10 ? '52' + d : d}`;
+}
